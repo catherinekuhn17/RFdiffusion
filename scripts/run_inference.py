@@ -76,8 +76,8 @@ def main(conf: HydraConfig) -> None:
         start_time = time.time()
         out_prefix={}
         if sampler.inf_conf.switch: # set up design names for both outputs
-            out_prefix[1] = f"{sampler.inf_conf.output_prefix}_1_{i_des}"
-            out_prefix[2] = f"{sampler.inf_conf.output_prefix}_2_{i_des}"
+            out_prefix[1] = f"{sampler.inf_conf.output_prefix}_{i_des}_1"
+            out_prefix[2] = f"{sampler.inf_conf.output_prefix}_{i_des}_2"
         else:
             out_prefix[1] = f"{sampler.inf_conf.output_prefix}_{i_des}"
         log.info(f"Making design {out_prefix[1]}")
