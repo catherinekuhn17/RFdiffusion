@@ -158,7 +158,6 @@ class Sampler:
         #############################
         
         if self.inf_conf.switch:
-            print('running')
             print(self.inf_conf.switch_Rt)
             self.switch = switch.SwitchGen(self.inf_conf.switch_Rt)
         else:
@@ -670,7 +669,8 @@ class SelfConditioning(Sampler):
         
 
         if self.switch: # if we want to switch!
-            switch_resi_idx = range(0,self.contig_map.hal_idx0[0]+13)
+            add_on = int((self.contig_map.hal_idx0[-1]-self.contig_map.hal_idx0[0])/2)
+            switch_resi_idx = range(0, self.contig_map.hal_idx0[0]+add_on)
             if k==1:
                 x_t[self.contig_map.hal_idx0] = self.xyz_mot # ensure motif xyz is maintained!
                 if t>cutoff and not stay and t != self.diffuser.T and t != self.diffuser_conf.partial_T: 
