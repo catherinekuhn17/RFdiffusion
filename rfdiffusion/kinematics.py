@@ -1,7 +1,6 @@
 import numpy as np
 import torch
 from rfdiffusion.chemical import INIT_CRDS
-from rfdiffusion.util import generate_Cbeta
 
 PARAMS = {
     "DMIN"    : 2.0,
@@ -56,18 +55,13 @@ def get_dih(a, b, c, d):
 
     Parameters
     ----------
-    a,b,c,d : pytorch tensors or numpy array of shape [batch,nres,3]
+    a,b,c,d : pytorch tensors of shape [batch,nres,3]
               store Cartesian coordinates of four sets of atoms
     Returns
     -------
-    dih : pytorch tensor or numpy array of shape [batch,nres]
+    dih : pytorch tensor of shape [batch,nres]
           stores resulting dihedrals
     """
-    convert_to_torch = lambda *arrays: [torch.from_numpy(arr) for arr in arrays]
-    output_np=False
-    if isinstance(a, np.ndarray):
-        output_np=True
-        a,b,c,d = convert_to_torch(a,b,c,d)
     b0 = a - b
     b1 = c - b
     b2 = d - c
@@ -79,10 +73,18 @@ def get_dih(a, b, c, d):
 
     x = torch.sum(v*w, dim=-1)
     y = torch.sum(torch.cross(b1,v,dim=-1)*w, dim=-1)
-    output = torch.atan2(y, x)
-    if output_np:
-        return output.numpy()
-    return output
+
+    return torch.atan2(y, x)
+
+def get_Cb(xyz):
+    '''recreate Cb given N,Ca,C'''
+    N  = xyz[...,0,:]
+    Ca = xyz[...,1,:]
+    C  = xyz[...,2,:]
+    b = Ca - N
+    c = C - Ca
+    a = torch.cross(b, c, dim=-1)
+    return -0.58273431*a + 0.56802827*b - 0.54067466*c + Ca
 
 # ============================================================
 def xyz_to_c6d(xyz, params=PARAMS):
@@ -106,7 +108,7 @@ def xyz_to_c6d(xyz, params=PARAMS):
     N  = xyz[:,:,0]
     Ca = xyz[:,:,1]
     C  = xyz[:,:,2]
-    Cb = generate_Cbeta(N, Ca, C)
+    Cb = get_Cb(xyz)
 
     # 6d coordinates order: (dist,omega,theta,phi)
     c6d = torch.zeros([batch,nres,nres,4],dtype=xyz.dtype,device=xyz.device)
@@ -280,7 +282,7 @@ def c6d_to_bins2(c6d, same_chain, negative=False, params=PARAMS):
     
     return torch.stack([db,ob,tb,pb],axis=-1).long()
 
-def get_init_xyz(xyz_t):
+def get_init_xyz(xyz_t, center=True):
     # input: xyz_t (B, T, L, 14, 3)
     # ouput: xyz (B, T, L, 14, 3)
     B, T, L = xyz_t.shape[:3]
@@ -290,8 +292,9 @@ def get_init_xyz(xyz_t):
 
     mask = torch.isnan(xyz_t[:,:,:,:3]).any(dim=-1).any(dim=-1) # (B, T, L)
     #
-    center_CA = ((~mask[:,:,:,None]) * torch.nan_to_num(xyz_t[:,:,:,1,:])).sum(dim=2) / ((~mask[:,:,:,None]).sum(dim=2)+1e-4) # (B, T, 3)
-    xyz_t = xyz_t - center_CA.view(B,T,1,1,3)
+    if center:
+        center_CA = ((~mask[:,:,:,None]) * torch.nan_to_num(xyz_t[:,:,:,1,:])).sum(dim=2) / ((~mask[:,:,:,None]).sum(dim=2)+1e-4) # (B, T, 3)
+        xyz_t = xyz_t - center_CA.view(B,T,1,1,3)
     #
     idx_s = list()
     for i_b in range(B):

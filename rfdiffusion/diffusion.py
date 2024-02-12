@@ -237,7 +237,8 @@ class IGSO3:
                 num_sigma=self.num_sigma,
                 min_sigma=self.min_sigma,
                 max_sigma=self.max_sigma,
-                num_omega=self.num_omega
+                num_omega=self.num_omega,
+                L=L,
             )
             write_pkl(cache_fname, igso3_vals)
 
@@ -605,6 +606,7 @@ class Diffuser:
         include_motif_sidechains=True,
         diffusion_mask=None,
         t_list=None,
+        zero_mot=True
     ):
         """
         Given full atom xyz, sequence and atom mask, diffuse the protein frame
@@ -637,13 +639,14 @@ class Diffuser:
         assert torch.sum(~nan_mask) == 0
 
         # Centre unmasked structure at origin, as in training (to prevent information leak)
-        if torch.sum(diffusion_mask) != 0:
-            self.motif_com = xyz[diffusion_mask, 1, :].mean(
-                dim=0
-            )  # This is needed for one of the potentials
-            xyz = xyz - self.motif_com
-        elif torch.sum(diffusion_mask) == 0:
-            xyz = xyz - xyz[:, 1, :].mean(dim=0)
+        if zero_mot==True:
+            if torch.sum(diffusion_mask) != 0:
+                self.motif_com = xyz[diffusion_mask, 1, :].mean(
+                    dim=0
+                )  # This is needed for one of the potentials
+                xyz = xyz - self.motif_com
+            elif torch.sum(diffusion_mask) == 0:
+                xyz = xyz - xyz[:, 1, :].mean(dim=0)
 
         xyz_true = torch.clone(xyz)
         xyz = xyz * self.crd_scale

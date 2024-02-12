@@ -14,6 +14,7 @@ import torch.nn.functional as nn
 from rfdiffusion import util
 from hydra.core.hydra_config import HydraConfig
 import os
+from rfdiffusion.inference import switch
 
 from rfdiffusion.model_input_logger import pickle_function_call
 import sys
@@ -152,6 +153,17 @@ class Sampler:
         self.target_feats = iu.process_target(self.inf_conf.input_pdb, parse_hetatom=True, center=False)
         self.chain_idx = None
 
+        #############################
+        ### Initialise Multistate ###
+        #############################
+        
+        if self.inf_conf.switch:
+            print('running')
+            print(self.inf_conf.switch_Rt)
+            self.switch = switch.SwitchGen(self.inf_conf.switch_Rt)
+        else:
+            self.switch = None
+        
         ##############################
         ### Handle Partial Noising ###
         ##############################
@@ -248,7 +260,7 @@ class Sampler:
             'diffuser': self.diffuser,
             'potential_manager': self.potential_manager,
         })
-        return iu.Denoise(**denoise_kwargs)
+        return iu.Denoise(**denoise_kwargs, visible=visible)
 
     def sample_init(self, return_forward_trajectory=False):
         """
@@ -261,7 +273,6 @@ class Sampler:
             xt: Starting positions with a portion of them randomly sampled.
             seq_t: Starting sequence with a portion of them set to unknown.
         """
-        
         #######################
         ### Parse input pdb ###
         #######################
@@ -273,7 +284,6 @@ class Sampler:
         ################################
 
         # Generate a specific contig from the range of possibilities specified at input
-
         self.contig_map = self.construct_contig(self.target_feats)
         self.mappings = self.contig_map.get_mappings()
         self.mask_seq = torch.from_numpy(self.contig_map.inpaint_seq)[None,:]
@@ -323,17 +333,17 @@ class Sampler:
                     be no offset between the index of a residue in the input and the index of the \
                     residue in the output, {contig_map.hal_idx0} != {contig_map.ref_idx0}'
             # Partially diffusing from a known structure
-            xyz_mapped=xyz_27
-            atom_mask_mapped = mask_27
+            xyz_mapped=xyz_27 # starting xyz coords are the starting structure
+            atom_mask_mapped = mask_27 
         else:
             # Fully diffusing from points initialised at the origin
             # adjust size of input xt according to residue map
             xyz_mapped = torch.full((1,1,L_mapped,27,3), np.nan)
-            xyz_mapped[:, :, contig_map.hal_idx0, ...] = xyz_27[contig_map.ref_idx0,...]
+            xyz_mapped[:, :, contig_map.hal_idx0, ...] = xyz_27[contig_map.ref_idx0,...] # ensure coords are what we want
             xyz_motif_prealign = xyz_mapped.clone()
-            motif_prealign_com = xyz_motif_prealign[0,0,:,1].mean(dim=0)
+            motif_prealign_com = xyz_motif_prealign[0,0,:,1].mean(dim=0) 
             self.motif_com = xyz_27[contig_map.ref_idx0,1].mean(dim=0)
-            xyz_mapped = get_init_xyz(xyz_mapped).squeeze()
+            xyz_mapped = get_init_xyz(xyz_mapped, self.inf_conf.zero_mot).squeeze() # added option of zeroing motif
             # adjust the size of the input atom map
             atom_mask_mapped = torch.full((L_mapped, 27), False)
             atom_mask_mapped[contig_map.hal_idx0] = mask_27[contig_map.ref_idx0]
@@ -366,10 +376,12 @@ class Sampler:
             torch.clone(seq_t),
             atom_mask_mapped.squeeze(),
             diffusion_mask=self.diffusion_mask.squeeze(),
-            t_list=t_list)
+            t_list=t_list,
+            zero_mot=self.inf_conf.zero_mot)
         xT = fa_stack[-1].squeeze()[:,:14,:]
         xt = torch.clone(xT)
-
+        self.xyz_mot = xt[contig_map.hal_idx0]
+       # self.xyz_mot= torch.clone(xt)
         self.denoiser = self.construct_denoiser(len(self.contig_map.ref), visible=self.mask_seq.squeeze())
 
         ######################
@@ -384,6 +396,15 @@ class Sampler:
         self.pair_prev = None
         self.state_prev = None
 
+        #######################
+        ### Apply Switching ###
+        #######################
+        if self.inf_conf.switch:
+            self.target_feats_sw = iu.process_target(self.inf_conf.input_pdb2, parse_hetatom=True, center=False)
+            xyz_27_sw = self.target_feats_sw['xyz_27']
+            xt_2 = xyz_27_sw.squeeze()[:,:14,:]
+            self.xyz_mot_2 = xt_2
+        
         #########################################
         ### Parse ligand for ligand potential ###
         #########################################
@@ -542,7 +563,7 @@ class Sampler:
 
         return msa_masked, msa_full, seq[None], torch.squeeze(xyz_t, dim=0), idx, t1d, t2d, xyz_t, alpha_t
         
-    def sample_step(self, *, t, x_t, seq_init, final_step):
+    def sample_step(self, *, first_step, cutoff, k, t, x_t, seq_init, final_step):
         '''Generate the next pose that the model should be supplied at timestep t-1.
 
         Args:
@@ -558,6 +579,17 @@ class Sampler:
             tors_t_1: (L, ?) The updated torsion angles of the next  step.
             plddt: (L, 1) Predicted lDDT of x0.
         '''
+        switch_resi_idx = range(0, self.contig_map.hal_idx0[0]+13)
+
+        if self.switch: # if switching
+            if k==2 and t>cutoff: # if working on motif 2
+                x_t = self.switch.applyRt(x_t, switch_resi_idx, self.switch.R12, self.switch.t12)
+                x_t[self.contig_map.hal_idx0] = self.xyz_mot_2
+            elif k==1 and t<cutoff: # if working on motif 2
+                x_t = self.switch.applyRt(x_t, switch_resi_idx, self.switch.R21, self.switch.t21)
+                x_t[self.contig_map.hal_idx0] = self.xyz_mot
+            
+        
         msa_masked, msa_full, seq_in, xt_in, idx_pdb, t1d, t2d, xyz_t, alpha_t = self._preprocess(
             seq_init, x_t, t)
 
@@ -611,7 +643,7 @@ class Sampler:
 
         if self.symmetry is not None:
             x_t_1, seq_t_1 = self.symmetry.apply_symmetry(x_t_1, seq_t_1)
-
+        
         return px0, x_t_1, seq_t_1, plddt
 
 
@@ -621,7 +653,7 @@ class SelfConditioning(Sampler):
     pX0[t+1] is provided as a template input to the model at time t
     """
 
-    def sample_step(self, *, t, x_t, seq_init, final_step):
+    def sample_step(self, *, cutoff, stay, k, t, x_t, seq_init, final_step):
         '''
         Generate the next pose that the model should be supplied at timestep t-1.
         Args:
@@ -635,7 +667,33 @@ class SelfConditioning(Sampler):
             seq_t_1: (L) The sequence to the next step (== seq_init)
             plddt: (L, 1) Predicted lDDT of x0.
         '''
+        
 
+        if self.switch: # if we want to switch!
+            switch_resi_idx = range(0,self.contig_map.hal_idx0[0]+13)
+            if k==1:
+                x_t[self.contig_map.hal_idx0] = self.xyz_mot # ensure motif xyz is maintained!
+                if t>cutoff and not stay and t != self.diffuser.T and t != self.diffuser_conf.partial_T: 
+                    # if going from state 2 --> 1, apply rotation and translation
+                    x_t = self.switch.applyRt(x_t, switch_resi_idx, self.switch.R21, self.switch.t21)
+                    x_t[self.contig_map.hal_idx0] = self.xyz_mot # may need to re-fix motif residues
+                    
+            elif k==2:
+                x_t[self.contig_map.hal_idx0] = self.xyz_mot_2[self.contig_map.ref_idx0]  # ensure motif xyz is maintained!
+                if t>cutoff and not stay and t != self.diffuser.T and t != self.diffuser_conf.partial_T:
+                    # if going from state 1 --> 2, apply rotation and translation
+                    x_t = self.switch.applyRt(x_t, switch_resi_idx, self.switch.R12, self.switch.t12)
+                    if self.diffuser_conf.partial_T:
+                        x_t[self.contig_map.hal_idx0] = self.xyz_mot_2[self.contig_map.hal_idx0]
+                    else:
+                        x_t[self.contig_map.hal_idx0] = self.xyz_mot_2[self.contig_map.ref_idx0] # may need to refix motif residues
+        else:
+            if k==1:
+                x_t[self.contig_map.hal_idx0] = self.xyz_mot # ensure motif xyz is maintained!
+            elif k==2:
+                x_t[self.contig_map.hal_idx0] = self.xyz_mot_2[self.contig_map.hal_idx0]           
+        
+        # preprocess data            
         msa_masked, msa_full, seq_in, xt_in, idx_pdb, t1d, t2d, xyz_t, alpha_t = self._preprocess(
             seq_init, x_t, t)
         B,N,L = xyz_t.shape[:3]
@@ -645,7 +703,11 @@ class SelfConditioning(Sampler):
         ##################################
         if (t < self.diffuser.T) and (t != self.diffuser_conf.partial_T):   
             zeros = torch.zeros(B,1,L,24,3).float().to(xyz_t.device)
-            xyz_t = torch.cat((self.prev_pred.unsqueeze(1),zeros), dim=-2) # [B,T,L,27,3]
+            if k == 1: # for state 1
+                xyz_t = torch.cat((self.prev_pred.unsqueeze(1),zeros), dim=-2) # [B,T,L,27,3]
+            elif k == 2: # if there is a state 2
+                xyz_t = torch.cat((self.prev_pred2.unsqueeze(1),zeros), dim=-2) # [B,T,L,27,3]
+
             t2d_44   = xyz_to_t2d(xyz_t) # [B,T,L,L,44]
         else:
             xyz_t = torch.zeros_like(xyz_t)
@@ -679,10 +741,28 @@ class SelfConditioning(Sampler):
 
             if self.symmetry is not None and self.inf_conf.symmetric_self_cond:
                 px0 = self.symmetrise_prev_pred(px0=px0,seq_in=seq_in, alpha=alpha)[:,:,:3]
-
-        self.prev_pred = torch.clone(px0)
-
-        # prediction of X0
+        if t == self.diffuser.T or t == self.diffuser_conf.partial_T:
+            # if this is the first step, we must set both of the px0
+            self.prev_pred = torch.clone(px0)
+            self.prev_pred2 = torch.clone(px0)
+        
+        else:
+            if k==1:
+                self.prev_pred = torch.clone(px0)
+                if self.inf_conf.conserve_px0_all: 
+                    self.prev_pred2 = torch.clone(px0)
+                elif self.inf_conf.conserve_px0_part:
+                    if t>cutoff:
+                        self.prev_pred2 = torch.clone(px0)
+            if k==2:
+                self.prev_pred2 = torch.clone(px0)
+                if self.inf_conf.conserve_px0_all:
+                    self.prev_pred = torch.clone(px0)
+                elif self.inf_conf.conserve_px0_part:
+                    if t>cutoff:
+                        self.prev_pred = torch.clone(px0)
+                        
+        
         _, px0  = self.allatom(torch.argmax(seq_in, dim=-1), px0, alpha)
         px0    = px0.squeeze()[:,:14]
         
@@ -723,7 +803,7 @@ class SelfConditioning(Sampler):
         px0_sym,_ = self.symmetry.apply_symmetry(px0_aa.to('cpu').squeeze()[:,:14], torch.argmax(seq_in, dim=-1).squeeze().to('cpu'))
         px0_sym = px0_sym[None].to(self.device)
         return px0_sym
-
+    
 class ScaffoldedSampler(SelfConditioning):
     """ 
     Model Runner for Scaffold-Constrained diffusion
@@ -902,7 +982,6 @@ class ScaffoldedSampler(SelfConditioning):
 
         self.denoiser = self.construct_denoiser(self.L, visible=self.mask_seq.squeeze())
 
-
         xT = torch.clone(fa_stack[-1].squeeze()[:,:14,:])
         return xT, seq_T
     
@@ -953,4 +1032,4 @@ class ScaffoldedSampler(SelfConditioning):
         if self.target:
             idx_pdb[:,self.binderlen:] += 200
 
-        return msa_masked, msa_full, seq, xyz_prev, idx_pdb, t1d, t2d, xyz_t, alpha_t
+        return msa_masked, msa_full, seq, xyz_prev, idx_pdb, t1d, t2d, xyz_t, alpha_t       
