@@ -34,18 +34,18 @@ OUT_FN="example_outputs/HH_45-55_contig1_5-8_contig2_45-55_cut${CUTOFF}_sw${SWIT
 SWITCH_RT='input_rT/switch_rot.npz'
 
 python ../scripts/run_inference.py \
-    --config-name=base_sw \
+	--config-name=base_sw \
 	inference.write_trajectory=False \
-    inference.recenter=False \
+	inference.recenter=False \
 	inference.conserve_px0_part=$conserve_px0_part \
-    inference.conserve_px0_all=$conserve_px0_all \
+	inference.conserve_px0_all=$conserve_px0_all \
 	inference.switch_pace=$SWITCH_PACE \
 	inference.starting_pdb=$STARTING_PDB \
-    inference.switch=True \
-    inference.cutoff=$CUTOFF \
+	inference.switch=True \
+	inference.cutoff=$CUTOFF \
 	inference.num_designs=$NUM_DES \
 	inference.output_prefix=$OUT_FN \
-    inference.input_pdb=$INPUT_PDB1 \
+	inference.input_pdb=$INPUT_PDB1 \
 	inference.input_pdb2=$INPUT_PDB2 \
 	inference.switch_Rt=$SWITCH_RT \
 	'contigmap.length=80-150' \
