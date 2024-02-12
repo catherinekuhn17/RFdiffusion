@@ -1,0 +1,6 @@
+[2024-02-12 13:35:49,900][__main__][INFO] - ////////////////////////////////////////////////
+[2024-02-12 13:35:49,902][__main__][INFO] - ///// NO GPU DETECTED! Falling back to CPU /////
+[2024-02-12 13:35:49,903][__main__][INFO] - ////////////////////////////////////////////////
+[2024-02-12 13:35:49,904][rfdiffusion.inference.model_runners][INFO] - Reading checkpoint from /wynton/home/kortemme/ckuhn/Desktop/programs/RFdiffusion/rfdiffusion/inference/../../models/Base_ckpt.pt
+[2024-02-12 13:35:52,897][rfdiffusion.inference.model_runners][INFO] - Loading checkpoint.
+[2024-02-12 13:35:57,287][rfdiffusion.diffusion][INFO] - Calculating IGSO3.

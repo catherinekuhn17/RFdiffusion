@@ -1,0 +1,15 @@
+- inference.write_trajectory=False
+- inference.recenter=False
+- inference.conserve_px0_part=False
+- inference.conserve_px0_all=True
+- inference.switch_pace=3
+- inference.starting_pdb=1
+- inference.switch=True
+- inference.cutoff=8
+- inference.num_designs=5000
+- inference.output_prefix=/wynton/home/kortemme/ckuhn/Desktop/thesis_proj/diffusion_models/switch_diff/larger_scale_diff/diffusion_runs/HH_22-55_contig1_5-8_contig2_22-55_cut8_sw3_start1_False_all/HH_22-55_contig1_5-8_contig2_22-55_cut8_sw3_start1_False_all
+- inference.input_pdb=/wynton/home/kortemme/ckuhn/Desktop/thesis_proj/diffusion_models/switch_diff/larger_scale_diff/inputs/HH_SQR_centered.pdb
+- inference.input_pdb2=/wynton/home/kortemme/ckuhn/Desktop/thesis_proj/diffusion_models/switch_diff/larger_scale_diff/inputs/HH_TET_aligned.pdb
+- inference.switch_Rt=/wynton/home/kortemme/ckuhn/Desktop/thesis_proj/diffusion_models/switch_diff/larger_scale_diff/inputs/switch_rot.npz
+- contigmap.length=80-150
+- contigmap.contigs=[22-55/A1-11/5-8/B1-11/22-55]

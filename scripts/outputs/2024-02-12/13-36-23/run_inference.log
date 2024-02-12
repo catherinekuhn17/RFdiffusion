@@ -1,0 +1,8 @@
+[2024-02-12 13:36:23,261][__main__][INFO] - ////////////////////////////////////////////////
+[2024-02-12 13:36:23,262][__main__][INFO] - ///// NO GPU DETECTED! Falling back to CPU /////
+[2024-02-12 13:36:23,263][__main__][INFO] - ////////////////////////////////////////////////
+[2024-02-12 13:36:23,265][rfdiffusion.inference.model_runners][INFO] - Reading checkpoint from /wynton/home/kortemme/ckuhn/Desktop/programs/RFdiffusion/rfdiffusion/inference/../../models/Base_ckpt.pt
+[2024-02-12 13:36:26,314][rfdiffusion.inference.model_runners][INFO] - Loading checkpoint.
+[2024-02-12 13:36:30,365][rfdiffusion.diffusion][INFO] - Calculating IGSO3.
+[2024-02-12 13:37:01,553][__main__][INFO] - Making design /wynton/home/kortemme/ckuhn/Desktop/thesis_proj/diffusion_models/switch_diff/larger_scale_diff/diffusion_runs/HH_22-55_contig1_5-8_contig2_22-55_cut8_sw3_start1_False_all/HH_22-55_contig1_5-8_contig2_22-55_cut8_sw3_start1_False_all_1_1
+[2024-02-12 13:37:01,557][rfdiffusion.inference.model_runners][INFO] - Using contig: ['22-55/A1-11/5-8/B1-11/22-55']

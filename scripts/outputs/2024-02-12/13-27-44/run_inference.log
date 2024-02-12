@@ -1,0 +1,4 @@
+[2024-02-12 13:27:44,337][__main__][INFO] - ////////////////////////////////////////////////
+[2024-02-12 13:27:44,338][__main__][INFO] - ///// NO GPU DETECTED! Falling back to CPU /////
+[2024-02-12 13:27:44,339][__main__][INFO] - ////////////////////////////////////////////////
+[2024-02-12 13:27:44,340][rfdiffusion.inference.model_runners][INFO] - Reading checkpoint from /wynton/home/kortemme/ckuhn/Desktop/programs/RFdiffusion/rfdiffusion/inference/../../models/Base_ckpt.pt
