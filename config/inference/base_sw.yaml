@@ -3,7 +3,7 @@
 inference:
   input_pdb: null
   num_designs: 10
-  design_startnum: 1
+  design_startnum: 0
   ckpt_override_path: null
   symmetry: null
   recenter: True
@@ -21,20 +21,18 @@ inference:
   trb_save_ckpt_path: null
   schedule_directory_path: null
   model_directory_path: null
-  
-  #switch inputs
-  switch: True
+  # switch inputs:
+  switch: False
   input_pdb2: null
   switch_pace: 1 
   starting_pdb: 1
-#  center_pdb1: False
-#  center_pdb2: False
+  center_pdb1: False
+  center_pdb2: False
   switch_Rt: null
   cutoff: 5
   zero_mot: False
-  conserve_px0_all: False
-  conserve_px0_part: False
-
+  conserve_px0_all: False #if you only self-condition on the prev px0 of that state 
+  conserve_px0_part: True #if you only self-condition on the prev px0 of that state during optimization
 
 contigmap:
   contigs: null
