@@ -7,6 +7,9 @@ format_rots = lambda r: torch.tensor(r).float()
 
 
 class SwitchGen():
+    '''
+    load in the rotationa/translation matricies to convert between state 1 and 2, and state 2 and 1
+    '''
     def __init__(self, switch_rot):
         
         switch_Rt = np.load(switch_rot)
@@ -16,6 +19,9 @@ class SwitchGen():
         self.t21 = torch.tensor(switch_Rt['t21'], dtype=torch.float32)
         
     def applyRt(self, coords, resi_list, R, t):
+        '''
+        apply rot/trans
+        '''
         xt = torch.clone(coords)
         xt_switch = xt[resi_list]
         flat_xt = torch.reshape(torch.flatten(xt_switch), (-1,3))
@@ -23,3 +29,4 @@ class SwitchGen():
         new_xt_reshape = torch.reshape(new_xt,(-1,14,3))
         xt[resi_list] = new_xt_reshape
         return xt
+

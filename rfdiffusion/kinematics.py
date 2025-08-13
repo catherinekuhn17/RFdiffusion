@@ -282,7 +282,7 @@ def c6d_to_bins2(c6d, same_chain, negative=False, params=PARAMS):
     
     return torch.stack([db,ob,tb,pb],axis=-1).long()
 
-def get_init_xyz(xyz_t, center=True):
+def get_init_xyz(xyz_t, center_mot=True):
     # input: xyz_t (B, T, L, 14, 3)
     # ouput: xyz (B, T, L, 14, 3)
     B, T, L = xyz_t.shape[:3]
@@ -292,11 +292,9 @@ def get_init_xyz(xyz_t, center=True):
 
     mask = torch.isnan(xyz_t[:,:,:,:3]).any(dim=-1).any(dim=-1) # (B, T, L)
     #
-    if center:
+    if center_mot:
         center_CA = ((~mask[:,:,:,None]) * torch.nan_to_num(xyz_t[:,:,:,1,:])).sum(dim=2) / ((~mask[:,:,:,None]).sum(dim=2)+1e-4) # (B, T, 3)
         xyz_t = xyz_t - center_CA.view(B,T,1,1,3)
-    #
-    idx_s = list()
     for i_b in range(B):
         for i_T in range(T):
             if mask[i_b, i_T].all():

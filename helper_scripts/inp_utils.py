@@ -195,6 +195,7 @@ def writepdb(
 
         else:
             natoms = atomscpu.shape[1]
+            print(i,s, natoms)
             if natoms != 14 and natoms != 27:
                 print("bad size!", atoms.shape)
                 assert False

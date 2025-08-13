@@ -9,8 +9,9 @@ def get_args(argv=None):
     p.add_argument("--pdb_fn1", type=str, help="fn of pdb 1")
     p.add_argument("--pdb_fn2", type=str, help="fn of pdb 2")
     p.add_argument("--pdb1_resi", type=str, help="residues you want to define Rt by of pdb1 (format example: A1-5/A7/B3-8")
-    p.add_argument("--pdb2_resi", type=str, help="residues you want to define Rt by of pdb2")    
-    p.add_argument("--out_n", type=str, help="filename to write out to")
+    p.add_argument("--pdb2_resi", type=str, help="residues you want to define Rt by of pdb2")   
+    p.add_argument("--out_folder", type=str, help="folder to write out to")
+    p.add_argument("--out_fn", type=str, help="filename to write out to")
     args = p.parse_args()
     if argv is not None:
         args = p.parse_args(argv) # for use when testing
@@ -22,11 +23,9 @@ def main():
     args = get_args()
     # load in pdbs
     pdb_fn1 = args.pdb_fn1
-    pre1 = pdb_fn1.split('/')[-1].split('.pdb')[0]
     pdb1 = iu.parse_pdb(pdb_fn1)
     
     pdb_fn2 = args.pdb_fn2
-    pre2 = pdb_fn2.split('/')[-1].split('.pdb')[0]
     pdb2 = iu.parse_pdb(pdb_fn2)    
     
     # align pdb1 and pdb2 by residues
@@ -39,7 +38,7 @@ def main():
 
     R12,t12 = iu.get_Rt(pdb1['xyz'][resi_idx0_1][:,1].reshape(-1, 3),
                      pdb2['xyz'][resi_idx0_2][:,1].reshape(-1, 3))
-    np.savez(f'{args.out_fn}.npz', 
+    np.savez(f'{args.out_folder}/{args.out_fn}.npz', 
                  R12=R12,
                  R21=R21,
                  t12=t12,

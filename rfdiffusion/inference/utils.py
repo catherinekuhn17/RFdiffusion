@@ -613,7 +613,7 @@ def parse_pdb_lines(lines, parse_hetatom=False, ignore_het_h=True):
 def process_target(pdb_path, parse_hetatom=False, center=True):
     # Read target pdb and extract features.
     target_struct = parse_pdb(pdb_path, parse_hetatom=parse_hetatom)
-
+    print(f'process target centering? : {center}')
     # Zero-center positions
     ca_center = target_struct["xyz"][:, :1, :].mean(axis=0, keepdims=True)
     if not center:

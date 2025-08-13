@@ -158,7 +158,6 @@ class Sampler:
         #############################
         
         if self.inf_conf.switch:
-            print(self.inf_conf.switch_Rt)
             self.switch = switch.SwitchGen(self.inf_conf.switch_Rt)
         else:
             self.switch = None
@@ -342,7 +341,10 @@ class Sampler:
             xyz_motif_prealign = xyz_mapped.clone()
             motif_prealign_com = xyz_motif_prealign[0,0,:,1].mean(dim=0) 
             self.motif_com = xyz_27[contig_map.ref_idx0,1].mean(dim=0)
-            xyz_mapped = get_init_xyz(xyz_mapped, self.inf_conf.zero_mot).squeeze() # added option of zeroing motif
+            if self.inf_conf.center_mot is not None:
+                xyz_mapped = get_init_xyz(xyz_mapped, self.inf_conf.center_mot).squeeze() # added option of zeroing motif
+            else:
+                xyz_mapped = get_init_xyz(xyz_mapped).squeeze() 
             # adjust the size of the input atom map
             atom_mask_mapped = torch.full((L_mapped, 27), False)
             atom_mask_mapped[contig_map.hal_idx0] = mask_27[contig_map.ref_idx0]
@@ -376,7 +378,7 @@ class Sampler:
             atom_mask_mapped.squeeze(),
             diffusion_mask=self.diffusion_mask.squeeze(),
             t_list=t_list,
-            zero_mot=self.inf_conf.zero_mot)
+            zero_mot=self.inf_conf.center_mot)
         xT = fa_stack[-1].squeeze()[:,:14,:]
         xt = torch.clone(xT)
         self.xyz_mot = xt[contig_map.hal_idx0]
@@ -398,7 +400,8 @@ class Sampler:
         #######################
         ### Apply Switching ###
         #######################
-        if self.inf_conf.switch:
+        if self.switch is not None:
+            # we need to initialize xt for state 2
             self.target_feats_sw = iu.process_target(self.inf_conf.input_pdb2, parse_hetatom=True, center=False)
             xyz_27_sw = self.target_feats_sw['xyz_27']
             xt_2 = xyz_27_sw.squeeze()[:,:14,:]
@@ -562,7 +565,7 @@ class Sampler:
 
         return msa_masked, msa_full, seq[None], torch.squeeze(xyz_t, dim=0), idx, t1d, t2d, xyz_t, alpha_t
         
-    def sample_step(self, *, first_step, cutoff, k, t, x_t, seq_init, final_step):
+    def sample_step(self, *, cutoff=None, maintain_state=True, k=1, t, x_t, seq_init, final_step):
         '''Generate the next pose that the model should be supplied at timestep t-1.
 
         Args:
@@ -578,16 +581,43 @@ class Sampler:
             tors_t_1: (L, ?) The updated torsion angles of the next  step.
             plddt: (L, 1) Predicted lDDT of x0.
         '''
-        switch_resi_idx = range(0, self.contig_map.hal_idx0[0]+13)
-
-        if self.switch: # if switching
-            if k==2 and t>cutoff: # if working on motif 2
-                x_t = self.switch.applyRt(x_t, switch_resi_idx, self.switch.R12, self.switch.t12)
-                x_t[self.contig_map.hal_idx0] = self.xyz_mot_2
-            elif k==1 and t<cutoff: # if working on motif 2
-                x_t = self.switch.applyRt(x_t, switch_resi_idx, self.switch.R21, self.switch.t21)
-                x_t[self.contig_map.hal_idx0] = self.xyz_mot
+        
+        if self.switch is not None: 
+            '''
+            for applying the rotation/translation to switching coordinates to maybe define new xt
+            '''
             
+            # first defining which residues to switch on - up to end of contig1 + half of residues between contigs
+            add_on = int((self.contig_map.hal_idx0[-1]-self.contig_map.hal_idx0[0])/2)
+            switch_resi_idx = range(0, self.contig_map.hal_idx0[0]+add_on)
+            if k==1: # if in state 1
+                
+                x_t[self.contig_map.hal_idx0] = self.xyz_mot # ensure motif xyz is maintained!
+                if t > cutoff and not maintain_state and t != self.diffuser.T and t != self.diffuser_conf.partial_T: 
+                    '''
+                    if we are in the switching regime ans switching switch from state 2 --> state 1
+                    '''
+                    x_t = self.switch.applyRt(x_t, switch_resi_idx, self.switch.R21, self.switch.t21)
+                    x_t[self.contig_map.hal_idx0] = self.xyz_mot # ensure motif xyz is maintained!
+                    
+            elif k==2:
+                x_t[self.contig_map.hal_idx0] = self.xyz_mot_2 # ensure motif xyz is maintained!
+                if t > cutoff and not maintain_state and t != self.diffuser.T and t != self.diffuser_conf.partial_T:
+                    '''
+                    if we are in the switching regime and switching from state 1 --> state 2
+                    '''
+                    x_t = self.switch.applyRt(x_t, switch_resi_idx, self.switch.R12, self.switch.t12)
+                    if self.diffuser_conf.partial_T:
+                        x_t[self.contig_map.hal_idx0] = self.xyz_mot_2
+                    else:
+                        x_t[self.contig_map.hal_idx0] = self.xyz_mot_2# ensure motif xyz is maintained!
+                        
+        else: 
+            if k==1:
+                x_t[self.contig_map.hal_idx0] = self.xyz_mot # ensure motif xyz is maintained!
+            elif k==2:
+                x_t[self.contig_map.hal_idx0] = self.xyz_mot_2[self.contig_map.hal_idx0]           
+        
         
         msa_masked, msa_full, seq_in, xt_in, idx_pdb, t1d, t2d, xyz_t, alpha_t = self._preprocess(
             seq_init, x_t, t)
@@ -652,7 +682,8 @@ class SelfConditioning(Sampler):
     pX0[t+1] is provided as a template input to the model at time t
     """
 
-    def sample_step(self, *, cutoff, stay, k, t, x_t, seq_init, final_step):
+    #def sample_step(self, *, cutoff=None, stay=True, k=1, t, x_t, seq_init, final_step):
+    def sample_step(self, *, cutoff=None, maintain_state=True, k=1, t, x_t, seq_init, final_step):
         '''
         Generate the next pose that the model should be supplied at timestep t-1.
         Args:
@@ -666,32 +697,38 @@ class SelfConditioning(Sampler):
             seq_t_1: (L) The sequence to the next step (== seq_init)
             plddt: (L, 1) Predicted lDDT of x0.
         '''
-        
 
-        if self.switch: # if we want to switch!
+
+        if self.switch is not None: # if we want to switch!
+            # first defining which residues to switch on - up to end of contig1 + half of residues between contigs
             add_on = int((self.contig_map.hal_idx0[-1]-self.contig_map.hal_idx0[0])/2)
             switch_resi_idx = range(0, self.contig_map.hal_idx0[0]+add_on)
             if k==1:
                 x_t[self.contig_map.hal_idx0] = self.xyz_mot # ensure motif xyz is maintained!
-                if t>cutoff and not stay and t != self.diffuser.T and t != self.diffuser_conf.partial_T: 
-                    # if going from state 2 --> 1, apply rotation and translation
+                if t > cutoff and not maintain_state and t != self.diffuser.T and t != self.diffuser_conf.partial_T: 
+                    '''
+                    if we are in the switching regime and switching from state 2 --> state 1
+                    '''
                     x_t = self.switch.applyRt(x_t, switch_resi_idx, self.switch.R21, self.switch.t21)
                     x_t[self.contig_map.hal_idx0] = self.xyz_mot # may need to re-fix motif residues
                     
             elif k==2:
                 x_t[self.contig_map.hal_idx0] = self.xyz_mot_2[self.contig_map.ref_idx0]  # ensure motif xyz is maintained!
-                if t>cutoff and not stay and t != self.diffuser.T and t != self.diffuser_conf.partial_T:
-                    # if going from state 1 --> 2, apply rotation and translation
+                if t > cutoff and not maintain_state and t != self.diffuser.T and t != self.diffuser_conf.partial_T:
+                    '''
+                    if we are in the switching regime and switching from state 1 --> state 2
+                    '''
+
                     x_t = self.switch.applyRt(x_t, switch_resi_idx, self.switch.R12, self.switch.t12)
                     if self.diffuser_conf.partial_T:
-                        x_t[self.contig_map.hal_idx0] = self.xyz_mot_2[self.contig_map.hal_idx0]
+                        x_t[self.contig_map.hal_idx0] = self.xyz_mot_2
                     else:
-                        x_t[self.contig_map.hal_idx0] = self.xyz_mot_2[self.contig_map.ref_idx0] # may need to refix motif residues
-        else:
+                        x_t[self.contig_map.hal_idx0] = self.xyz_mot_2 # may need to refix motif residues
+        else: # if just normal diffusion
             if k==1:
                 x_t[self.contig_map.hal_idx0] = self.xyz_mot # ensure motif xyz is maintained!
             elif k==2:
-                x_t[self.contig_map.hal_idx0] = self.xyz_mot_2[self.contig_map.hal_idx0]           
+                x_t[self.contig_map.hal_idx0] = self.xyz_mot_2         
         
         # preprocess data            
         msa_masked, msa_full, seq_in, xt_in, idx_pdb, t1d, t2d, xyz_t, alpha_t = self._preprocess(
@@ -701,13 +738,13 @@ class SelfConditioning(Sampler):
         ##################################
         ######## Str Self Cond ###########
         ##################################
-        if (t < self.diffuser.T) and (t != self.diffuser_conf.partial_T):   
+        
+        if (t < self.diffuser.T) and (t != self.diffuser_conf.partial_T):  # if not the first step
             zeros = torch.zeros(B,1,L,24,3).float().to(xyz_t.device)
             if k == 1: # for state 1
                 xyz_t = torch.cat((self.prev_pred.unsqueeze(1),zeros), dim=-2) # [B,T,L,27,3]
             elif k == 2: # if there is a state 2
                 xyz_t = torch.cat((self.prev_pred2.unsqueeze(1),zeros), dim=-2) # [B,T,L,27,3]
-
             t2d_44   = xyz_to_t2d(xyz_t) # [B,T,L,L,44]
         else:
             xyz_t = torch.zeros_like(xyz_t)
@@ -742,25 +779,30 @@ class SelfConditioning(Sampler):
             if self.symmetry is not None and self.inf_conf.symmetric_self_cond:
                 px0 = self.symmetrise_prev_pred(px0=px0,seq_in=seq_in, alpha=alpha)[:,:,:3]
         if t == self.diffuser.T or t == self.diffuser_conf.partial_T:
-            # if this is the first step, we must set both of the px0
+            # if this is the first step, we must set initialize both of the px0 
             self.prev_pred = torch.clone(px0)
             self.prev_pred2 = torch.clone(px0)
         
+        ##########################################
+        ### setting up prev_pred for switching ###
+        ##########################################
         else:
             if k==1:
                 self.prev_pred = torch.clone(px0)
-                if self.inf_conf.conserve_px0_all: 
-                    self.prev_pred2 = torch.clone(px0)
-                elif self.inf_conf.conserve_px0_part:
-                    if t>cutoff:
+                if self.switch: # if switching
+                    if self.inf_conf.conserve_px0_all: # if 'sharing' px0 between states for entire run
                         self.prev_pred2 = torch.clone(px0)
+                    elif self.inf_conf.conserve_px0_part: # if 'sharing' px0 between states until optimization
+                        if t>cutoff:
+                            self.prev_pred2 = torch.clone(px0)
             if k==2:
                 self.prev_pred2 = torch.clone(px0)
-                if self.inf_conf.conserve_px0_all:
-                    self.prev_pred = torch.clone(px0)
-                elif self.inf_conf.conserve_px0_part:
-                    if t>cutoff:
+                if self.switch: 
+                    if self.inf_conf.conserve_px0_all:
                         self.prev_pred = torch.clone(px0)
+                    elif self.inf_conf.conserve_px0_part:
+                        if t>cutoff:
+                            self.prev_pred = torch.clone(px0)
                         
         
         _, px0  = self.allatom(torch.argmax(seq_in, dim=-1), px0, alpha)

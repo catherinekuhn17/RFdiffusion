@@ -341,10 +341,7 @@ def poly_repulse(dgram, r, slope, p=1):
     a = slope / (p * r**(p-1))
 
     return (dgram < r) * a * torch.abs(r - dgram)**p * slope
-
-#def only_top_n(dgram
-
-
+    
 class substrate_contacts(Potential):
     '''
     Implicitly models a ligand with an attractive-repulsive potential.
@@ -436,23 +433,8 @@ class substrate_contacts(Potential):
         A, t = torch.hsplit(M, [l-1])
         t = t.transpose(0,1)
         return A, t
+    
 
-    def _grab_motif_residues(self, xyz) -> None:
-        """
-        Grabs 4 atoms in the motif.
-        Currently random subset of Ca atoms if the motif is >= 4 residues, or else 4 random atoms from a single residue
-        """
-        idx = torch.arange(self.diffusion_mask.shape[0])
-        idx = idx[self.diffusion_mask].float()
-        if torch.sum(self.diffusion_mask) >= 4:
-            rand_idx = torch.multinomial(idx, 4).long()
-            # get Ca atoms
-            self.motif_frame = xyz[rand_idx, 1]
-            self.motif_mapping = [(i,1) for i in rand_idx]
-        else:
-            rand_idx = torch.multinomial(idx, 1).long()
-            self.motif_frame = xyz[rand_idx[0],:4]
-            self.motif_mapping = [(rand_idx, i) for i in range(4)]
 
 # Dictionary of types of potentials indexed by name of potential. Used by PotentialManager.
 # If you implement a new potential you must add it to this dictionary for it to be used by
