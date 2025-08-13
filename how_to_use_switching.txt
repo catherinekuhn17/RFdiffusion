@@ -7,4 +7,4 @@ Then, you need to center one of these motifs, and then align the other motif by 
 Then, you need to generate the rotation/translation matrices to define the miton
 -A script for this is in helper_scripts/generate_Rt_mat.sh
 
-Finally, you can run RFdiffusion on these prepared motifs, usinf the config file switch.yaml and following the submission script examples/design_switch.sh
+Finally, you can run RFdiffusion on these prepared motifs, using the config file switch.yaml and following the submission script examples/design_switch.sh
