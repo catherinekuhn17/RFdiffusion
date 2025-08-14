@@ -75,7 +75,7 @@ def main(conf: HydraConfig) -> None:
 
         start_time = time.time()
         out_prefix={}
-        if sampler.inf_conf.switch is not None: # set up design names for both outputs if switching
+        if sampler.inf_conf.switch == True: # set up design names for both outputs if switching
             out_prefix[1] = f"{sampler.inf_conf.output_prefix}_1_{i_des}" # state 1
             out_prefix[2] = f"{sampler.inf_conf.output_prefix}_2_{i_des}" # state 2
         else:
@@ -101,7 +101,7 @@ def main(conf: HydraConfig) -> None:
         seq_stack[1] = []
         plddt_stack[1] = []
 
-        if sampler.inf_conf.switch is not None: # defining for second output if making a switch
+        if sampler.inf_conf.switch == True: # defining for second output if making a switch
             denoised_xyz_stack[2] = []
             px0_xyz_stack[2] = []
             seq_stack[2] = []
@@ -111,7 +111,7 @@ def main(conf: HydraConfig) -> None:
         seq_t = torch.clone(seq_init)
         
         # setting up some switch parameters 
-        if sampler.inf_conf.switch is not None:
+        if sampler.inf_conf.switch == True:
             switch_pace = sampler.inf_conf.switch_pace # pace at which denoising switching happens
             cutoff = sampler.inf_conf.cutoff # when to start independant denoising traj's
             starting_pdb = sampler.inf_conf.starting_pdb # which motif to start with (either 1 or 2)
@@ -121,7 +121,7 @@ def main(conf: HydraConfig) -> None:
         starting_T = sampler.t_step_input
         for t in range(int(sampler.t_step_input), sampler.inf_conf.final_step - 1, -1):
             maintain_state = False # determines if we maintain current state
-            if sampler.inf_conf.switch is not None:
+            if sampler.inf_conf.switch == True:
                 '''
                 for making a switch!
                 '''

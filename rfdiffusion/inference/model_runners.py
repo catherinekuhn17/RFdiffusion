@@ -157,7 +157,10 @@ class Sampler:
         ### Initialise Multistate ###
         #############################
         
-        if self.inf_conf.switch:
+        print(self.inf_conf.switch)
+        if self.inf_conf.switch == True:
+            print(self.inf_conf.switch)
+            print('hi?')
             self.switch = switch.SwitchGen(self.inf_conf.switch_Rt)
         else:
             self.switch = None
@@ -341,10 +344,7 @@ class Sampler:
             xyz_motif_prealign = xyz_mapped.clone()
             motif_prealign_com = xyz_motif_prealign[0,0,:,1].mean(dim=0) 
             self.motif_com = xyz_27[contig_map.ref_idx0,1].mean(dim=0)
-            if self.inf_conf.center_mot is not None:
-                xyz_mapped = get_init_xyz(xyz_mapped, self.inf_conf.center_mot).squeeze() # added option of zeroing motif
-            else:
-                xyz_mapped = get_init_xyz(xyz_mapped).squeeze() 
+            xyz_mapped = get_init_xyz(xyz_mapped, self.inf_conf.center_mot).squeeze() # added option of zeroing motif
             # adjust the size of the input atom map
             atom_mask_mapped = torch.full((L_mapped, 27), False)
             atom_mask_mapped[contig_map.hal_idx0] = mask_27[contig_map.ref_idx0]
@@ -400,7 +400,7 @@ class Sampler:
         #######################
         ### Apply Switching ###
         #######################
-        if self.switch is not None:
+        if self.switch == True:
             # we need to initialize xt for state 2
             self.target_feats_sw = iu.process_target(self.inf_conf.input_pdb2, parse_hetatom=True, center=False)
             xyz_27_sw = self.target_feats_sw['xyz_27']
@@ -582,7 +582,7 @@ class Sampler:
             plddt: (L, 1) Predicted lDDT of x0.
         '''
         
-        if self.switch is not None: 
+        if self.switch == True: 
             '''
             for applying the rotation/translation to switching coordinates to maybe define new xt
             '''
@@ -699,7 +699,7 @@ class SelfConditioning(Sampler):
         '''
 
 
-        if self.switch is not None: # if we want to switch!
+        if self.switch == True: # if we want to switch!
             # first defining which residues to switch on - up to end of contig1 + half of residues between contigs
             add_on = int((self.contig_map.hal_idx0[-1]-self.contig_map.hal_idx0[0])/2)
             switch_resi_idx = range(0, self.contig_map.hal_idx0[0]+add_on)
