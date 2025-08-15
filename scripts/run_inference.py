@@ -110,42 +110,34 @@ def main(conf: HydraConfig) -> None:
         x_t = torch.clone(x_init)
         seq_t = torch.clone(seq_init)
         
+        starting_T = sampler.t_step_input
         # setting up some switch parameters 
         if sampler.inf_conf.switch == True:
             switch_pace = sampler.inf_conf.switch_pace # pace at which denoising switching happens
             cutoff = sampler.inf_conf.cutoff # when to start independant denoising traj's
             starting_pdb = sampler.inf_conf.starting_pdb # which motif to start with (either 1 or 2)
-            
-            
+            other_pdb = 2 if starting_pdb == 1 else 1
+            state_schedule = [starting_pdb if val < 0 else other_pdb for val in [(sampler.t_step_input-t)%(2*switch_pace) - switch_pace for t in range(int(sampler.t_step_input),sampler.inf_conf.final_step - 1, -1)]]
+
         # Loop over number of reverse diffusion time steps.
-        starting_T = sampler.t_step_input
         for t in range(int(sampler.t_step_input), sampler.inf_conf.final_step - 1, -1):
-            maintain_state = False # determines if we maintain current state
             if sampler.inf_conf.switch == True:
                 '''
                 for making a switch!
                 '''
+                i = sampler.t_step_input - t
                 if t > cutoff: # if in switching regime (before indepentand traj's):
                     if t==starting_T: # if we are on the FIRST STEP
                         k = starting_pdb # start with whichever we want to denoise first
                     else: # otherwise, we want to alternate between the two
-                        state = (starting_T-t)%(2*switch_pace) - switch_pace # hacky way to determine which state we're in 
-                        if state < 0:
-                            k = starting_pdb
-                            if state!=-switch_pace:
-                                maintain_state=True # determines if we maintain current state
-                        else:
-                            k = [1,2]
-                            k.remove(starting_pdb)
-                            k = k[0]
-                            if state!= 0: 
-                                maintain_state=True # determines if we maintain current state
-                                
+                        k = state_schedule[i]
+                            
                     # perform a denoising step:     
                     px0, x_t, seq_t, plddt = sampler.sample_step(cutoff=cutoff, 
-                                                                 maintain_state=maintain_state, 
-                                                                 k=k, t=t, x_t=x_t, 
-                                                                 seq_init=seq_t, final_step=sampler.inf_conf.final_step)
+                                                                 t=t, x_t=x_t, 
+                                                                 seq_init=seq_t, 
+                                                                 final_step=sampler.inf_conf.final_step,
+                                                                 state_schedule=state_schedule)
                    
                     px0_xyz_stack_tmp = px0_xyz_stack[k]
                     px0_xyz_stack_tmp.append(px0)
@@ -169,7 +161,7 @@ def main(conf: HydraConfig) -> None:
                     for k in [1,2]: 
                        #switch_resi_idx = range(sampler.contig_map.hal_idx0[-1], len(sampler.contig_map.ref_idx0))
                         px0, x_t, seq_t, plddt = sampler.sample_step(cutoff=cutoff,
-                                                                     maintain_state=True, k=k, t=t, 
+                                                                     t=t, k=k,
                                                                      x_t=denoised_xyz_stack[k][-1], 
                                                                      seq_init=seq_stack[k][-1], 
                                                                      final_step=sampler.inf_conf.final_step

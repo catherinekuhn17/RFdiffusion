@@ -157,10 +157,7 @@ class Sampler:
         ### Initialise Multistate ###
         #############################
         
-        print(self.inf_conf.switch)
-        if self.inf_conf.switch == True:
-            print(self.inf_conf.switch)
-            print('hi?')
+        if self.inf_conf.switch == True:           
             self.switch = switch.SwitchGen(self.inf_conf.switch_Rt)
         else:
             self.switch = None
@@ -400,7 +397,7 @@ class Sampler:
         #######################
         ### Apply Switching ###
         #######################
-        if self.switch == True:
+        if self.switch is not None:
             # we need to initialize xt for state 2
             self.target_feats_sw = iu.process_target(self.inf_conf.input_pdb2, parse_hetatom=True, center=False)
             xyz_27_sw = self.target_feats_sw['xyz_27']
@@ -582,7 +579,7 @@ class Sampler:
             plddt: (L, 1) Predicted lDDT of x0.
         '''
         
-        if self.switch == True: 
+        if self.switch is not None: 
             '''
             for applying the rotation/translation to switching coordinates to maybe define new xt
             '''
@@ -683,7 +680,7 @@ class SelfConditioning(Sampler):
     """
 
     #def sample_step(self, *, cutoff=None, stay=True, k=1, t, x_t, seq_init, final_step):
-    def sample_step(self, *, cutoff=None, maintain_state=True, k=1, t, x_t, seq_init, final_step):
+    def sample_step(self, *, cutoff=None, t, x_t, seq_init, final_step, state_schedule=None, k=1):
         '''
         Generate the next pose that the model should be supplied at timestep t-1.
         Args:
@@ -697,40 +694,45 @@ class SelfConditioning(Sampler):
             seq_t_1: (L) The sequence to the next step (== seq_init)
             plddt: (L, 1) Predicted lDDT of x0.
         '''
-
-
-        if self.switch == True: # if we want to switch!
+        # determing how we treat pX0
+        switching_pX0 = self.inf_conf.switch_px0 #if applying rT to px0 if switching states
+        conserve_px0_all = self.inf_conf.conserve_px0_all #if 'sharing' px0 between states for entire run
+        conserve_px0_part = self.inf_conf.conserve_px0_part #if 'sharing' px0 between states until optimization
+        
+        if switching_pX0: 
+            conserve_px0_part == False
+            conserve_px0_all == False
+            
+        
+        if self.switch is not None: # if we want to switch!
+            i = self.diffuser.T - t
+            if t > cutoff:
+                state = state_schedule[i]
+            else:
+                state = k
             # first defining which residues to switch on - up to end of contig1 + half of residues between contigs
             add_on = int((self.contig_map.hal_idx0[-1]-self.contig_map.hal_idx0[0])/2)
             switch_resi_idx = range(0, self.contig_map.hal_idx0[0]+add_on)
-            if k==1:
-                x_t[self.contig_map.hal_idx0] = self.xyz_mot # ensure motif xyz is maintained!
-                if t > cutoff and not maintain_state and t != self.diffuser.T and t != self.diffuser_conf.partial_T: 
-                    '''
-                    if we are in the switching regime and switching from state 2 --> state 1
-                    '''
-                    x_t = self.switch.applyRt(x_t, switch_resi_idx, self.switch.R21, self.switch.t21)
-                    x_t[self.contig_map.hal_idx0] = self.xyz_mot # may need to re-fix motif residues
-                    
-            elif k==2:
-                x_t[self.contig_map.hal_idx0] = self.xyz_mot_2[self.contig_map.ref_idx0]  # ensure motif xyz is maintained!
-                if t > cutoff and not maintain_state and t != self.diffuser.T and t != self.diffuser_conf.partial_T:
-                    '''
-                    if we are in the switching regime and switching from state 1 --> state 2
-                    '''
-
-                    x_t = self.switch.applyRt(x_t, switch_resi_idx, self.switch.R12, self.switch.t12)
-                    if self.diffuser_conf.partial_T:
-                        x_t[self.contig_map.hal_idx0] = self.xyz_mot_2
-                    else:
-                        x_t[self.contig_map.hal_idx0] = self.xyz_mot_2 # may need to refix motif residues
-        else: # if just normal diffusion
-            if k==1:
-                x_t[self.contig_map.hal_idx0] = self.xyz_mot # ensure motif xyz is maintained!
-            elif k==2:
-                x_t[self.contig_map.hal_idx0] = self.xyz_mot_2         
+            
+            if state==1:
+                xyz_mot = self.xyz_mot 
+                Rot =  self.switch.R21
+                trans =  self.switch.t21
+                
+                
+            elif state==2:
+                xyz_mot = self.xyz_mot_2
+                Rot =  self.switch.R12
+                trans =  self.switch.t12     
+            
+            x_t[self.contig_map.hal_idx0] = xyz_mot
+                            
+            if (t > cutoff) and (state_schedule[i] != state_schedule[i-1]) and (t != self.diffuser.T) and (t != self.diffuser_conf.partial_T): 
+                x_t = self.switch.applyRt(x_t, switch_resi_idx, Rot, trans)
+                x_t[self.contig_map.hal_idx0] = xyz_mot # ensure motif xyz is maintained!   
         
-        # preprocess data            
+        # preprocess data    
+        
         msa_masked, msa_full, seq_in, xt_in, idx_pdb, t1d, t2d, xyz_t, alpha_t = self._preprocess(
             seq_init, x_t, t)
         B,N,L = xyz_t.shape[:3]
@@ -741,11 +743,18 @@ class SelfConditioning(Sampler):
         
         if (t < self.diffuser.T) and (t != self.diffuser_conf.partial_T):  # if not the first step
             zeros = torch.zeros(B,1,L,24,3).float().to(xyz_t.device)
-            if k == 1: # for state 1
-                xyz_t = torch.cat((self.prev_pred.unsqueeze(1),zeros), dim=-2) # [B,T,L,27,3]
-            elif k == 2: # if there is a state 2
-                xyz_t = torch.cat((self.prev_pred2.unsqueeze(1),zeros), dim=-2) # [B,T,L,27,3]
+            
+            if self.switch is not None:
+                if state == 1:
+                    prev_pred = self.prev_pred
+                elif state == 2:
+                    prev_pred = self.prev_pred2
+                    if switching_pX0 and (state_schedule[i] != state_schedule[i-1]):
+                        prev_pred = self.switch_prev_pred(prev_pred, switch_resi_idx, Rot, trans)
+                        
+            xyz_t = torch.cat((prev_pred.unsqueeze(1),zeros), dim=-2) # [B,T,L,27,3]  
             t2d_44   = xyz_to_t2d(xyz_t) # [B,T,L,L,44]
+            
         else:
             xyz_t = torch.zeros_like(xyz_t)
             t2d_44   = torch.zeros_like(t2d[...,:44])
@@ -775,35 +784,33 @@ class SelfConditioning(Sampler):
                                 t=torch.tensor(t),
                                 return_infer=True,
                                 motif_mask=self.diffusion_mask.squeeze().to(self.device))   
-
+            
             if self.symmetry is not None and self.inf_conf.symmetric_self_cond:
                 px0 = self.symmetrise_prev_pred(px0=px0,seq_in=seq_in, alpha=alpha)[:,:,:3]
+            
+            self.alpha = alpha
+
+                       
         if t == self.diffuser.T or t == self.diffuser_conf.partial_T:
-            # if this is the first step, we must set initialize both of the px0 
+            # if this is the first step, we must initialize both of the px0 
             self.prev_pred = torch.clone(px0)
             self.prev_pred2 = torch.clone(px0)
-        
+            
         ##########################################
         ### setting up prev_pred for switching ###
         ##########################################
+            
         else:
-            if k==1:
+            if state==1:
                 self.prev_pred = torch.clone(px0)
-                if self.switch: # if switching
-                    if self.inf_conf.conserve_px0_all: # if 'sharing' px0 between states for entire run
+                if self.switch is not None: 
+                    if (conserve_px0_all) or (conserve_px0_part and t>cutoff): 
                         self.prev_pred2 = torch.clone(px0)
-                    elif self.inf_conf.conserve_px0_part: # if 'sharing' px0 between states until optimization
-                        if t>cutoff:
-                            self.prev_pred2 = torch.clone(px0)
-            if k==2:
+            if state==2:
                 self.prev_pred2 = torch.clone(px0)
-                if self.switch: 
-                    if self.inf_conf.conserve_px0_all:
+                if self.switch is not None: 
+                    if (conserve_px0_all) or (conserve_px0_part and t>cutoff): 
                         self.prev_pred = torch.clone(px0)
-                    elif self.inf_conf.conserve_px0_part:
-                        if t>cutoff:
-                            self.prev_pred = torch.clone(px0)
-                        
         
         _, px0  = self.allatom(torch.argmax(seq_in, dim=-1), px0, alpha)
         px0    = px0.squeeze()[:,:14]
@@ -835,8 +842,14 @@ class SelfConditioning(Sampler):
         if self.symmetry is not None:
             x_t_1, seq_t_1 = self.symmetry.apply_symmetry(x_t_1, seq_t_1)
 
-        return px0, x_t_1, seq_t_1, plddt
-
+        self.prev_state = state
+    
+    def switch_prev_pred(self, prev_pred, switch_resi_idx, Rot, trans):
+        prev_pred = prev_pred.to('cpu').squeeze()
+        prev_pred = self.switch.applyRt(prev_pred, switch_resi_idx, Rot, trans)
+        prev_pred= prev_pred.unsqueeze(0).to(self.device)
+        return prev_pred
+        
     def symmetrise_prev_pred(self, px0, seq_in, alpha):
         """
         Method for symmetrising px0 output for self-conditioning

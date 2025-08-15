@@ -1,0 +1,17 @@
+# Config for sampling switching.
+
+defaults:
+  - base
+
+inference:
+  switch: True
+  input_pdb2: null
+  switch_pace: 1 
+  starting_pdb: 1
+  center_mot: False
+  switch_Rt: null
+  cutoff: 5
+  conserve_px0_all: False #if you only self-condition on the prev px0 of that state 
+  conserve_px0_part: False #if you only self-condition on the prev px0 of that state during optimization
+  switch_px0: True
+
