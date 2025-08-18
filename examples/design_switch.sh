@@ -8,7 +8,11 @@
 #$ -l mem_free=10G
 #$ -l h_rt=96:00:00
 
-conda activate SE3nv
+LD_PRELOAD=/wynton/home/kortemme/ckuhn/Desktop/kortemme/glibc-2.27/opt/glibc-2.27/lib/libm.so.6
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/wynton/home/kortemme/ckuhn/anaconda3/envs/SE3nv2/lib/
+export CUDA_VISIBLE_DEVICES=$SGE_GPU
+conda activate SE3nv2
+export HYDRA_FULL_ERROR=1
 
 INPUT_PDB1='input_pdbs/HH_SQR_centered.pdb'
 INPUT_PDB2='input_pdbs/HH_TET_aligned.pdb'
@@ -35,8 +39,9 @@ python ../scripts/run_inference.py \
 	inference.recenter=False \
 	inference.switch=True \
 	inference.center_mot=False \
-	inference.conserve_px0_part=$conserve_px0_part \
-	inference.conserve_px0_all=$conserve_px0_all \
+#	inference.conserve_px0_part=$conserve_px0_part \
+#	inference.conserve_px0_all=$conserve_px0_all \
+	inference.conserve_px0=False
 	inference.switch_pace=$SWITCH_PACE \
 	inference.starting_pdb=$STARTING_PDB \
     inference.cutoff=$CUTOFF \

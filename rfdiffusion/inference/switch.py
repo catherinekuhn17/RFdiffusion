@@ -22,11 +22,12 @@ class SwitchGen():
         '''
         apply rot/trans
         '''
+        L,A,_ = coords.shape
         xt = torch.clone(coords)
         xt_switch = xt[resi_list]
         flat_xt = torch.reshape(torch.flatten(xt_switch), (-1,3))
         new_xt = torch.transpose(torch.mm(R, torch.transpose(flat_xt, 0, 1))+t,0,1)
-        new_xt_reshape = torch.reshape(new_xt,(-1,14,3))
+        new_xt_reshape = torch.reshape(new_xt,(-1,A,3))
         xt[resi_list] = new_xt_reshape
         return xt
 
