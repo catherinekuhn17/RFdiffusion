@@ -138,22 +138,21 @@ def main(conf: HydraConfig) -> None:
                                                                  seq_init=seq_t, 
                                                                  final_step=sampler.inf_conf.final_step,
                                                                  state_schedule=state_schedule)
-                    for k in [1,2]:
-                        px0_xyz_stack_tmp = px0_xyz_stack[k]
-                        px0_xyz_stack_tmp.append(px0)
-                        px0_xyz_stack[k] = px0_xyz_stack_tmp
-                        
-                        denoised_xyz_stack_tmp = denoised_xyz_stack[k] 
-                        denoised_xyz_stack_tmp.append(x_t)
-                        denoised_xyz_stack[k] = denoised_xyz_stack_tmp
-                        
-                        seq_stack_tmp = seq_stack[k] 
-                        seq_stack_tmp.append(seq_t)
-                        seq_stack[k] = seq_stack_tmp
-                        
-                        plddt_stack_tmp = plddt_stack[k] 
-                        plddt_stack_tmp.append(plddt[0])
-                        plddt_stack[k] = plddt_stack_tmp
+                    px0_xyz_stack_tmp = px0_xyz_stack[k]
+                    px0_xyz_stack_tmp.append(px0)
+                    px0_xyz_stack[k] = px0_xyz_stack_tmp
+                    
+                    denoised_xyz_stack_tmp = denoised_xyz_stack[k] 
+                    denoised_xyz_stack_tmp.append(x_t)
+                    denoised_xyz_stack[k] = denoised_xyz_stack_tmp
+                    
+                    seq_stack_tmp = seq_stack[k] 
+                    seq_stack_tmp.append(seq_t)
+                    seq_stack[k] = seq_stack_tmp
+                    
+                    plddt_stack_tmp = plddt_stack[k] 
+                    plddt_stack_tmp.append(plddt[0])
+                    plddt_stack[k] = plddt_stack_tmp
 
                         
                 else: # if in "optimizing" regime
